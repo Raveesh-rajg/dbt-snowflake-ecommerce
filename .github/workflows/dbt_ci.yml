@@ -1,0 +1,65 @@
+name: dbt CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  dbt-ci:
+    runs-on: ubuntu-latest
+
+    env:
+      DBT_PROFILES_DIR: ./.dbt
+      SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+      SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+      SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+      SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
+      SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dbt-snowflake
+        run: |
+          python -m pip install --upgrade pip
+          pip install dbt-core==1.11.11 dbt-snowflake==1.11.5
+
+      - name: Create dbt profiles.yml from secrets
+        run: |
+          mkdir -p ./.dbt
+          cat > ./.dbt/profiles.yml << EOF
+          dbt_snowflake_ecommerce:
+            target: ci
+            outputs:
+              ci:
+                type: snowflake
+                account: ${SNOWFLAKE_ACCOUNT}
+                user: ${SNOWFLAKE_USER}
+                password: ${SNOWFLAKE_PASSWORD}
+                role: ${SNOWFLAKE_ROLE}
+                warehouse: ${SNOWFLAKE_WAREHOUSE}
+                database: OLIST_DB
+                schema: CI_${{ github.run_id }}
+                threads: 4
+                client_session_keep_alive: false
+          EOF
+
+      - name: dbt deps
+        run: dbt deps
+
+      - name: dbt parse
+        run: dbt parse
+
+      - name: dbt compile
+        run: dbt compile
+
+      - name: dbt test (sources only — quick validation, no full build needed)
+        run: dbt test --select source:*
