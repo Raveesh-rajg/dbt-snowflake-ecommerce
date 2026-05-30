@@ -1,0 +1,52 @@
+version: 2
+
+sources:
+  - name: raw
+    description: "Raw Olist e-commerce data, loaded from CSV files via scripts/load_raw_data.py"
+    database: OLIST_DB
+    schema: RAW
+
+    tables:
+      - name: olist_customers_dataset
+        description: "One row per unique customer login. customer_id is per-order; customer_unique_id is the real identity."
+        columns:
+          - name: customer_id
+            description: "Per-order customer key. Joins to olist_orders_dataset."
+            tests:
+              - not_null
+              - unique
+          - name: customer_unique_id
+            description: "Stable customer identity across orders. Multiple customer_ids can share one customer_unique_id."
+            tests:
+              - not_null
+
+      - name: olist_orders_dataset
+        description: "One row per order placed on the Olist marketplace."
+        columns:
+          - name: order_id
+            description: "Primary key for orders."
+            tests:
+              - not_null
+              - unique
+          - name: customer_id
+            description: "FK to olist_customers_dataset."
+            tests:
+              - not_null
+              - relationships:
+                  arguments:
+                    to: source('raw', 'olist_customers_dataset')
+                    field: customer_id
+          - name: order_status
+            description: "Lifecycle status of the order (delivered, shipped, canceled, etc.)."
+
+      - name: olist_order_items_dataset
+        description: "One row per line item in an order. An order can have multiple items."
+        columns:
+          - name: order_id
+            description: "FK to olist_orders_dataset."
+            tests:
+              - not_null
+          - name: order_item_id
+            description: "Sequential item number within an order (1, 2, 3...). NOT globally unique."
+            tests:
+              - not_null
