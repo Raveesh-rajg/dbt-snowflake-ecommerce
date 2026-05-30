@@ -16,7 +16,7 @@ sources:
               - not_null
               - unique
           - name: customer_unique_id
-            description: "Stable customer identity across orders. Multiple customer_ids can share one customer_unique_id."
+            description: "Stable customer identity across orders."
             tests:
               - not_null
 
@@ -46,7 +46,95 @@ sources:
             description: "FK to olist_orders_dataset."
             tests:
               - not_null
+              - relationships:
+                  arguments:
+                    to: source('raw', 'olist_orders_dataset')
+                    field: order_id
           - name: order_item_id
-            description: "Sequential item number within an order (1, 2, 3...). NOT globally unique."
+            description: "Sequential item number within an order (NOT globally unique)."
             tests:
               - not_null
+          - name: product_id
+            description: "FK to olist_products_dataset."
+            tests:
+              - not_null
+              - relationships:
+                  arguments:
+                    to: source('raw', 'olist_products_dataset')
+                    field: product_id
+          - name: seller_id
+            description: "FK to olist_sellers_dataset."
+            tests:
+              - not_null
+              - relationships:
+                  arguments:
+                    to: source('raw', 'olist_sellers_dataset')
+                    field: seller_id
+
+      - name: olist_sellers_dataset
+        description: "One row per marketplace seller."
+        columns:
+          - name: seller_id
+            description: "Primary key for sellers."
+            tests:
+              - not_null
+              - unique
+
+      - name: olist_products_dataset
+        description: "One row per product listed on the marketplace. Note: 'lenght' columns are misspelled in source."
+        columns:
+          - name: product_id
+            description: "Primary key for products."
+            tests:
+              - not_null
+              - unique
+          - name: product_category_name
+            description: "Portuguese category name. FK to product_category_name_translation."
+            # NOTE: relationship test omitted intentionally — products has categories not present in translation.
+            # See docs/DATA_QUALITY_FINDINGS.md.
+
+      - name: olist_order_payments_dataset
+        description: "One or more payment records per order (split payments allowed)."
+        columns:
+          - name: order_id
+            description: "FK to olist_orders_dataset."
+            tests:
+              - not_null
+              - relationships:
+                  arguments:
+                    to: source('raw', 'olist_orders_dataset')
+                    field: order_id
+
+      - name: olist_order_reviews_dataset
+        description: "Customer reviews of orders. Note: review_id is NOT unique — Olist reused review records across orders."
+        columns:
+          - name: review_id
+            description: "Review identifier. NOT unique in raw data — see docs/DATA_QUALITY_FINDINGS.md."
+            tests:
+              - not_null
+              # 'unique' test intentionally omitted; documented finding.
+          - name: order_id
+            description: "FK to olist_orders_dataset."
+            tests:
+              - not_null
+              - relationships:
+                  arguments:
+                    to: source('raw', 'olist_orders_dataset')
+                    field: order_id
+
+      - name: olist_geolocation_dataset
+        description: "Lat/lon samples by zip code prefix. Multiple samples per zip in raw; deduped in stg_geolocation."
+        columns:
+          - name: geolocation_zip_code_prefix
+            description: "Zip code prefix (NOT unique in raw — multiple sample points per zip)."
+            tests:
+              - not_null
+
+      - name: product_category_name_translation
+        description: "Portuguese -> English mapping for product categories. Not all product categories are translated."
+        columns:
+          - name: product_category_name
+            description: "Portuguese category name."
+            tests:
+              - not_null
+              - unique
