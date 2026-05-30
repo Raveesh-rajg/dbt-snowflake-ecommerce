@@ -96,15 +96,8 @@ select
 
     -- Delivery metrics
     o.was_delivered_late,
-    case
-        when o.delivered_at is null then null
-        else datediff('day', o.ordered_at, o.delivered_at)
-    end as delivery_duration_days,
-
-    case
-        when o.delivered_at is null or o.estimated_delivery_at is null then null
-        else datediff('day', o.estimated_delivery_at, o.delivered_at)
-    end as days_vs_estimate,
+    {{ days_between_safe('o.ordered_at', 'o.delivered_at') }} as delivery_duration_days,
+    {{ days_between_safe('o.estimated_delivery_at', 'o.delivered_at') }} as days_vs_estimate,
 
     -- Derived flags
     case when o.order_status = 'delivered' then true else false end as is_delivered,
