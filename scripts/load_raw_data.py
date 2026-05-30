@@ -58,7 +58,7 @@ def load_csv_to_snowflake(conn, csv_path: Path) -> tuple[str, int, float]:
 
     df = pd.read_csv(csv_path)
     # Normalize column names: lowercase, no spaces, no special chars
-    df.columns = [c.lower().strip().replace(" ", "_") for c in df.columns]
+    df.columns = [c.upper().strip().replace(" ", "_") for c in df.columns]
 
     # write_pandas creates the table if it doesn't exist and bulk-loads via PUT/COPY
     success, n_chunks, n_rows, _ = write_pandas(
@@ -68,7 +68,8 @@ def load_csv_to_snowflake(conn, csv_path: Path) -> tuple[str, int, float]:
         database=TARGET_DATABASE,
         schema=TARGET_SCHEMA,
         auto_create_table=True,
-        overwrite=True,  # idempotent: replaces existing table
+        overwrite=True,
+        quote_identifiers=False,  
     )
 
     elapsed = time.time() - start
