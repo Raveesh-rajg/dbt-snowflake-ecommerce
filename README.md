@@ -1,4 +1,4 @@
-# dbt + Snowflake E-Commerce Analytics Platform
+# Commerce Analytics Warehouse | dbt and Snowflake
 
 **Status:** In progress — Day 1 / 14
 
