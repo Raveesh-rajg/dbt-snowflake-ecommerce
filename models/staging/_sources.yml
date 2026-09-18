@@ -3,8 +3,8 @@ version: 2
 sources:
   - name: raw
     description: "Raw Olist e-commerce data, loaded from CSV files via scripts/load_raw_data.py"
-    database: OLIST_DB
-    schema: RAW
+    database: "{{ target.database }}"
+    schema: "{{ var('raw_schema', 'raw') }}"
 
     tables:
       - name: olist_customers_dataset

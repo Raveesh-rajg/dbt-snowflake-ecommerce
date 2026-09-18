@@ -1,24 +1,16 @@
-# Python virtual environment
 .venv/
 __pycache__/
 *.pyc
-
-# Data files — too large for Git; README explains how to fetch via Kaggle
+.pytest_cache/
 data/
-
-# Credentials & secrets — NEVER commit these
 .env
-*.json
-!package.json
-profiles.yml
 *.key
-
-# dbt artifacts
+*.pem
+profiles.local.yml
+.user.yml
 target/
 dbt_packages/
 logs/
-
-# OS / editor junk
 .DS_Store
 .vscode/
 *.log

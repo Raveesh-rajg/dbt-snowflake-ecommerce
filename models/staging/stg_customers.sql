@@ -15,7 +15,7 @@ renamed as (
         customer_unique_id,
 
         -- Geography
-        customer_zip_code_prefix::varchar(5) as customer_zip_code_prefix,
+        lpad(cast(customer_zip_code_prefix as varchar), 5, '0') as customer_zip_code_prefix,
         trim(customer_city)                  as customer_city,
         upper(trim(customer_state))          as customer_state
 

@@ -1,110 +1,48 @@
+"""Load Olist CSVs into Snowflake. --replace explicitly replaces existing tables.
+
+Uses environment variables with browser authentication, never stored credentials.
+Tables load separately; rerun a failed load before dbt (Snowflake DDL is not atomic).
 """
-Load Olist CSV files into Snowflake's OLIST_DB.RAW schema.
-
-Reads each CSV from data/raw/, infers a schema, and bulk-loads to Snowflake.
-Idempotent: existing tables are dropped and recreated each run.
-
-Usage:
-    python scripts/load_raw_data.py
-"""
-
+import argparse
 import os
-import sys
-import yaml
-import time
-from pathlib import Path
+import re
+from data_contract import SCHEMAS, validate_files
 
-import pandas as pd
-from snowflake.connector import connect
-from snowflake.connector.pandas_tools import write_pandas
-
-
-# ----------------------------------------------------------------------------
-# Config
-# ----------------------------------------------------------------------------
-DATA_DIR = Path("data/raw")
-PROFILES_PATH = Path.home() / ".dbt" / "profiles.yml"
-PROFILE_NAME = "dbt_snowflake_ecommerce"
-TARGET_NAME = "dev"
-TARGET_DATABASE = "OLIST_DB"
-TARGET_SCHEMA = "RAW"
-
-
-def load_snowflake_creds():
-    """Read credentials from ~/.dbt/profiles.yml — avoids duplicating secrets."""
-    with open(PROFILES_PATH) as f:
-        profiles = yaml.safe_load(f)
-    target = profiles[PROFILE_NAME]["outputs"][TARGET_NAME]
-    return {
-        "account": target["account"],
-        "user": target["user"],
-        "password": target["password"],
-        "role": target["role"],
-        "warehouse": target["warehouse"],
-        "database": TARGET_DATABASE,
-        "schema": TARGET_SCHEMA,
-    }
-
-
-def csv_to_table_name(csv_path: Path) -> str:
-    """olist_orders_dataset.csv -> OLIST_ORDERS_DATASET"""
-    return csv_path.stem.upper()
-
-
-def load_csv_to_snowflake(conn, csv_path: Path) -> tuple[str, int, float]:
-    """Read CSV, push to Snowflake. Returns (table_name, row_count, seconds)."""
-    table = csv_to_table_name(csv_path)
-    start = time.time()
-
-    df = pd.read_csv(csv_path)
-    # Normalize column names: lowercase, no spaces, no special chars
-    df.columns = [c.upper().strip().replace(" ", "_") for c in df.columns]
-
-    # write_pandas creates the table if it doesn't exist and bulk-loads via PUT/COPY
-    success, n_chunks, n_rows, _ = write_pandas(
-        conn=conn,
-        df=df,
-        table_name=table,
-        database=TARGET_DATABASE,
-        schema=TARGET_SCHEMA,
-        auto_create_table=True,
-        overwrite=True,
-        quote_identifiers=False,  
-    )
-
-    elapsed = time.time() - start
-    if not success:
-        raise RuntimeError(f"Failed to load {table}")
-    return table, n_rows, elapsed
-
+def identifier(value):
+    if not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*', value):
+        raise ValueError('Identifiers must contain only letters, digits and underscores')
+    return value.upper()
 
 def main():
-    if not DATA_DIR.exists():
-        print(f"ERROR: {DATA_DIR} not found. Did you download the Olist dataset?")
-        sys.exit(1)
+    parser=argparse.ArgumentParser()
+    parser.add_argument('--data-dir', default='data/raw')
+    parser.add_argument('--schema', default='RAW')
+    parser.add_argument('--replace', action='store_true')
+    args=parser.parse_args()
+    paths=validate_files(args.data_dir)
+    import pandas as pd
+    from snowflake.connector import connect
+    from snowflake.connector.pandas_tools import write_pandas
+    database=identifier(os.environ.get('SNOWFLAKE_DATABASE','OLIST_DB'))
+    schema=identifier(args.schema)
+    kwargs=dict(account=os.environ['SNOWFLAKE_ACCOUNT'],user=os.environ['SNOWFLAKE_USER'],
+                authenticator=os.environ.get('SNOWFLAKE_AUTHENTICATOR','externalbrowser'),
+                role=os.environ.get('SNOWFLAKE_ROLE','OLIST_ANALYST'),
+                warehouse=os.environ.get('SNOWFLAKE_WAREHOUSE','DEV_WH'),database=database,schema=schema)
+    with connect(**kwargs) as conn:
+        for path in paths:
+            table=identifier(path.stem)
+            frame=pd.read_csv(path,dtype=str,keep_default_na=False).replace('',None)
+            frame.columns=[c.upper() for c in frame.columns]
+            temporary=table+'_LOAD'
+            columns=', '.join(f'{identifier(c)} VARCHAR' for c in SCHEMAS[path.stem])
+            conn.cursor().execute(f'CREATE OR REPLACE TEMPORARY TABLE {temporary} ({columns})')
+            success,_,count,_=write_pandas(conn,frame,temporary,database=database,schema=schema)
+            if not success or count!=len(frame):
+                raise RuntimeError(f'Incomplete load: {table}')
+            create='CREATE OR REPLACE TABLE' if args.replace else 'CREATE TABLE'
+            conn.cursor().execute(f'{create} {table} AS SELECT * FROM {temporary}')
+            print(f'{database}.{schema}.{table}: {count} rows')
 
-    csv_files = sorted(DATA_DIR.glob("*.csv"))
-    if not csv_files:
-        print(f"ERROR: No CSV files in {DATA_DIR}")
-        sys.exit(1)
-
-    print(f"Found {len(csv_files)} CSV file(s) to load.\n")
-
-    creds = load_snowflake_creds()
-    conn = connect(**creds)
-
-    total_rows = 0
-    try:
-        for csv_path in csv_files:
-            print(f"  Loading {csv_path.name} ...", end=" ", flush=True)
-            table, n_rows, elapsed = load_csv_to_snowflake(conn, csv_path)
-            total_rows += n_rows
-            print(f"-> {table}: {n_rows:,} rows in {elapsed:.1f}s")
-    finally:
-        conn.close()
-
-    print(f"\nDone. Loaded {total_rows:,} total rows across {len(csv_files)} tables into {TARGET_DATABASE}.{TARGET_SCHEMA}")
-
-
-if __name__ == "__main__":
+if __name__=='__main__':
     main()

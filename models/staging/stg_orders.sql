@@ -26,7 +26,7 @@ renamed as (
 
         -- Derived: was this order delivered late?
         case
-            when order_delivered_customer_date is null then null
+            when order_delivered_customer_date is null or order_estimated_delivery_date is null then null
             when order_delivered_customer_date::timestamp > order_estimated_delivery_date::timestamp then true
             else false
         end as was_delivered_late

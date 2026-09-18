@@ -1,0 +1,19 @@
+dbt_snowflake_ecommerce:
+  target: local
+  outputs:
+    local:
+      type: duckdb
+      path: "{{ env_var('DBT_DUCKDB_PATH', 'data/olist.duckdb') }}"
+      schema: analytics
+      threads: 2
+    snowflake:
+      type: snowflake
+      account: "{{ env_var('SNOWFLAKE_ACCOUNT', '') }}"
+      user: "{{ env_var('SNOWFLAKE_USER', '') }}"
+      authenticator: "{{ env_var('SNOWFLAKE_AUTHENTICATOR', 'externalbrowser') }}"
+      role: "{{ env_var('SNOWFLAKE_ROLE', 'OLIST_ANALYST') }}"
+      warehouse: "{{ env_var('SNOWFLAKE_WAREHOUSE', 'DEV_WH') }}"
+      database: "{{ env_var('SNOWFLAKE_DATABASE', 'OLIST_DB') }}"
+      schema: "{{ env_var('DBT_SCHEMA', 'ANALYTICS') }}"
+      threads: 4
+      client_session_keep_alive: false

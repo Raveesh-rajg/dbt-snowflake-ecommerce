@@ -40,12 +40,20 @@ payments_agg as (
         count(*)                              as payment_count,
         sum(payment_value)::numeric(12, 2)    as total_paid,
         max(payment_installments)             as max_installments,
-        -- Most-common payment type for this order (Snowflake mode equivalent)
-        max(payment_type)                     as primary_payment_type
+        -- Count/value ranking below supplies the modal payment type.
+        count(distinct payment_type)          as payment_types_count
     from {{ ref('stg_order_payments') }}
     group by order_id
 ),
 
+payment_type_counts as (
+    select order_id, payment_type, count(*) as occurrences, sum(payment_value) as type_value
+    from {{ ref('stg_order_payments') }} group by order_id, payment_type
+), payment_type_ranked as (
+    select *, row_number() over (
+        partition by order_id order by occurrences desc, type_value desc, payment_type
+    ) as rn from payment_type_counts
+),
 reviews_agg as (
     -- Some orders have multiple reviews (data quality finding); take avg
     select
@@ -87,7 +95,7 @@ select
     coalesce(p.total_paid, 0)::numeric(12, 2)   as total_paid,
     p.payment_count,
     p.max_installments,
-    p.primary_payment_type,
+    pt.payment_type as primary_payment_type,
 
     -- Reviews
     r.avg_review_score,
@@ -97,7 +105,7 @@ select
     -- Delivery metrics
     o.was_delivered_late,
     {{ days_between_safe('o.ordered_at', 'o.delivered_at') }} as delivery_duration_days,
-    {{ days_between_safe('o.estimated_delivery_at', 'o.delivered_at') }} as days_vs_estimate,
+    datediff('day', o.estimated_delivery_at, o.delivered_at) as days_vs_estimate,
 
     -- Derived flags
     case when o.order_status = 'delivered' then true else false end as is_delivered,
@@ -107,4 +115,5 @@ from orders o
 left join customers       c   on o.customer_id = c.customer_id
 left join order_items_agg oi  on o.order_id    = oi.order_id
 left join payments_agg    p   on o.order_id    = p.order_id
+left join payment_type_ranked pt on o.order_id = pt.order_id and pt.rn = 1
 left join reviews_agg     r   on o.order_id    = r.order_id

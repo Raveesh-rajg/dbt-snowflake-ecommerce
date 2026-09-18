@@ -23,7 +23,7 @@ order_items as (
 ),
 
 reviews as (
-    select * from {{ ref('stg_order_reviews') }}
+    select order_id, avg(review_score) as review_score from {{ ref('stg_order_reviews') }} group by order_id
 ),
 
 orders as (
@@ -38,7 +38,8 @@ product_sales as (
         sum(oi.item_price)         as total_revenue,
         sum(oi.total_item_revenue) as total_revenue_with_freight,
         avg(oi.item_price)         as avg_selling_price
-    from order_items oi
+    from order_items oi join orders o on oi.order_id = o.order_id
+    where o.order_status = 'delivered'
     group by oi.product_id
 ),
 
@@ -47,9 +48,10 @@ product_reviews as (
     select
         oi.product_id,
         avg(r.review_score) as avg_review_score
-    from order_items oi
+    from (select distinct order_id, product_id from order_items) oi
     join orders  o on oi.order_id = o.order_id
     join reviews r on o.order_id  = r.order_id
+    where o.order_status = 'delivered'
     group by oi.product_id
 )
 
